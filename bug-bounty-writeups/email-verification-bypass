@@ -1,0 +1,59 @@
+# Authentication Bypass: Email Verification bypass via Password Reset 
+Executive Summary
+
+A critical logic flaw was identified in the user registration and onboarding workflow of the target platform.
+The application backend prematurely registers a new user profile as an existing, active account in the database before the mandatory email verification step is completed.
+
+By leveraging the password reset functionality immediately after account creation, a user can manipulate the authentication state machine. The server processes the password update and inherently updates the user state to "verified," allowing an unverified user to bypass the registration wall, authenticate completely, and access the application platform.
+
+---
+
+## Vulnerability Details
+
+* **Vulnerability Type:**: Improper Authentication / Business Logic Flaw (State Machine Bypass)
+
+* **OWASP Top 10:**: A07:2021-Identification and Authentication Failures
+
+* **Affected Components:**: Registration Flow, Password Reset Endpoint (/password-reset)
+
+##Problem Description
+
+Registration Submit --> Unverified State (Locked) --> Email Token Verification --> Verified State (Active)
+
+However, the application architecture immediately commits the registration details to the primary database as an eligible account entry prior to token validation. When a password reset request is initiated for this unverified email, the backend processes the password update successfully. Upon completing the reset, the backend implicitly migrates the account status from an unverified, restricted registration state to an active user state, marking the email as verified within the account settings dashboard without any validation token ever being processed.
+
+---
+
+## Steps to Reproduce
+
+1. Navigate to the account creation portal on the target platform: https://portal.example.com/registration
+
+2. Fill out the registration form using an email address under your control, but **do not open the inbox or interact with any verification links sent**.
+
+3. Once the application UI routes to the `Verify Your Email` pending screen, explicitly navigate away or return to the main login endpoint:
+   ```http
+https://portal.example.com/login
+
+4. Click the "Forgot Password" or "Reset Password" link.
+
+5. Enter the exact email address used in Step 2. Observe that the server accepts the email and acknowledges it as an existing, active account inside the database by triggering a reset token.
+
+5. Retrieve the password reset link from your inbox, execute the reset action, and define a new password.
+
+6. Return to the primary login interface and authenticate using the newly configured password.
+
+Result: The system processes the login request, routes you past the verification wall, and logs you directly into the account dashboard. Checking the account configuration profiles or settings panel reveals that the application now reflects the email status as "Verified."
+
+---
+
+## Business Impact
+
+Bypass of Security Compliance & KYC Controls: For platforms operating within highly regulated environments (such as healthcare, financial services, or biotechnology), verifying identity and securing the email communication loop is an absolute baseline compliance requirement. Allowing arbitrary users to validate their own records entirely breaks these integrity boundaries.
+
+Account Provisioning Spam & Data Risks: Attackers can utilize this logic breakdown to systematically spin up thousands of fully verified, active accounts using fake, bulk, or temporary emails without needing to manage or host complex automated inbox interactions, increasing server overhead and skewing user metrics.
+
+---
+
+##Demonstrated Impact
+
+During functional testing, a test profile was initiated using an unverified sandbox email. By interrupting the workflow immediately at the confirmation prompt and forcing a password update path, the account restrictions were entirely dropped. The server recorded the profile as structurally verified, allowing full access to internal account features and settings panels without ever interacting with the initial onboarding verification link.
